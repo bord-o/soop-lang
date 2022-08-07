@@ -1,0 +1,3 @@
+(test
+ (name soop_tests)
+ (libraries ounit2 soop_lang))

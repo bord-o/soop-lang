@@ -1,0 +1,4 @@
+(executable
+ (public_name soop_lang)
+ (name main)
+ (libraries soop_lang))
