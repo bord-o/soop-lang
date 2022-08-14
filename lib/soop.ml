@@ -256,7 +256,7 @@ let run program =
     let intape = construct_tape ~number_of_bytes: 500 () in
     let ops = program |> char_list_of_string |> tokenize_list |> parse in
     ignore @@ exec intape ops;
-    print_endline ""
+    ()
 
 let run_soop soop = 
     let prog = bf_of_soop soop in
