@@ -3,6 +3,8 @@ let hellobf = ">++++++++[<+++++++++>-]<.>++++[<+++++++>-]<+.+++++++..+++.>>+++++
 let t2 = "+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++."
 let t3 = "+[>[<-[]>+[>+++>[+++++++++++>][>]-[<]>-]]++++++++++<]>>>>>>----.<<+++.<-..+++.<-.>>>.<<.+++.------.>-.<<+.<."
 
+
+
 let wk = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++."
 
 type tape = {
@@ -30,6 +32,11 @@ type instruction =
     | Store_byte 
     | Loop of instruction list
 
+let rec string_of_char_list chrs =
+    match chrs with
+    | [] -> ""
+    | x::xs -> String.make 1 x ^ (string_of_char_list xs)
+
 let char_list_of_string str = 
     let rec aux str =
         match str with
@@ -38,23 +45,40 @@ let char_list_of_string str =
     in aux str |> List.rev
 
 
-let rec soop_lexer = function
+let rec soopify = function
     | [] -> []
     | x::xs -> (match x with
-        | '>' -> [Some("Soop")] @ soop_lexer xs
-        | '<' -> [Some("Sooop")] @ soop_lexer xs
-        | '+' -> [Some("Soooop")] @ soop_lexer xs
-        | '-' -> [Some("Sooooop")] @ soop_lexer xs
-        | '.' -> [Some("Soooooop")] @ soop_lexer xs
-        | ',' -> [Some("Sooooooop")] @ soop_lexer xs
-        | '[' -> [Some("Soooooooop")] @ soop_lexer xs
-        | ']' -> [Some("Sooooooooop")] @ soop_lexer xs
-        | _ -> [None] @ soop_lexer xs)
+        | '>' -> [Some("Soop")] @ soopify xs
+        | '<' -> [Some("Sooop")] @ soopify xs
+        | '+' -> [Some("Soooop")] @ soopify xs
+        | '-' -> [Some("Sooooop")] @ soopify xs
+        | '.' -> [Some("Soooooop")] @ soopify xs
+        | ',' -> [Some("Sooooooop")] @ soopify xs
+        | '[' -> [Some("Soooooooop")] @ soopify xs
+        | ']' -> [Some("Sooooooooop")] @ soopify xs
+        | _ -> [None] @ soopify xs)
+    
+let rec unsoop = function
+    | [] -> []
+    | x::xs -> (match x with
+        | "Soop" -> Some('>') :: unsoop xs
+        | "Sooop" -> Some('<') :: unsoop xs
+        | "Soooop" -> Some('+') :: unsoop xs
+        | "Sooooop" -> Some('-') :: unsoop xs
+        | "Soooooop" -> Some('.') :: unsoop xs
+        | "Sooooooop" -> Some(',') :: unsoop xs
+        | "Soooooooop" -> Some('[') :: unsoop xs
+        | "Sooooooooop" -> Some(']') :: unsoop xs
+        | _ -> None :: unsoop xs)
 
 let soop_of_bf bfpg =
-    let soops = bfpg |> char_list_of_string |> soop_lexer |> List.map (Option.value ~default:"")
+    let soops = bfpg |> char_list_of_string |> soopify |> List.map (Option.value ~default:"")
     in
     List.fold_right (^) (List.map (fun soop -> soop ^" ") soops) ""
+let bf_of_soop soop = 
+    soop |> String.split_on_char ' ' |> unsoop |> List.map (Option.value ~default:'\x00') |> List.filter (fun x -> x <> '\000') |> string_of_char_list
+
+
 
 let get_byte tape = print_char @@ (Bytes.get_uint8 tape.t tape.p |> Char.chr)
 
@@ -112,14 +136,26 @@ and exec_loop t ops =
         t
     else
         exec_loop (exec t ops) ops
-
-let rec get_loop (acc, tokens) depth =
-    match (acc, tokens) with
+    (*
     | (_, JUMP_BACK::rest) -> if depth = 0 then (acc, rest)
         else get_loop(acc, rest) (depth - 1)
     | (_, x::rest) -> if x = JUMP_FWD then get_loop(x::acc, rest) (depth + 1)
         else get_loop(x::acc, rest) depth
-    | _ -> ([], [])
+    | _ -> (acc, [])
+    *)
+
+let t3_mod = "+[>[<->+[>+++>[+++++++++++>][>]-[<]>-]]++++++++++<]>>>>>>----.<<+++.<-..+++.<-.>>>.<<.+++.------.>-.<<+.<."
+
+let rec get_loop (acc, tokens) depth =
+    match (acc, tokens) with
+
+    | (_, x::rest) ->
+            (match x with
+            | JUMP_BACK -> if depth = 0 then (acc, rest) else get_loop(JUMP_BACK::acc, rest) (depth - 1)
+            | JUMP_FWD -> get_loop(JUMP_FWD::acc, rest) (depth + 1)
+            | _ -> get_loop(x::acc, rest) depth)
+            
+    | _ -> (acc, [])
 
 let rec parse tokens = 
     match tokens with
@@ -137,8 +173,8 @@ let rec parse tokens =
         )
         (* these two shouldnt happen as nops should be filtered and all of he 
            control flow logic is handled inside of JUMP_FWD *)
-        | JUMP_BACK -> [] @ parse rest
-        | NOP -> [] @ parse rest
+        | JUMP_BACK -> failwith "shouldnt be reached ']'"
+        | NOP -> failwith "nop reached"
         
 
 let rec tokenize_list chrs =
@@ -160,10 +196,6 @@ let rec tokenize_list chrs =
     | [x] -> [Option.value (tokenize x) ~default:NOP]
     | x::xs -> Option.value (tokenize x) ~default:NOP :: tokenize_list xs
 
-let rec string_of_char_list chrs =
-    match chrs with
-    | [] -> ""
-    | x::xs -> String.make 1 x ^ (string_of_char_list xs)
 
 let token_arr_of_list tl = 
     Array.init (List.length tl) (fun i-> List.nth tl i)
@@ -221,10 +253,14 @@ let dec_byte tape =
 (* wrapper functions for utop testing *)
 
 let run program = 
-    let intape = construct_tape () in
+    let intape = construct_tape ~number_of_bytes: 500 () in
     let ops = program |> char_list_of_string |> tokenize_list |> parse in
     ignore @@ exec intape ops;
     print_endline ""
+
+let run_soop soop = 
+    let prog = bf_of_soop soop in
+    run prog
 
 
 let parse_of_string = function
